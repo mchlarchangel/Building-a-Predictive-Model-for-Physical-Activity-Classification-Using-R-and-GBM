@@ -1,0 +1,102 @@
+---
+title: "Building a Predictive Model for Physical Activity Classification Using R and GBM"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+# Load Required Libraries
+library(caret)
+library(ggplot2)
+library(gbm)
+```
+
+```{r}
+# 1. Load Data
+train_data <- read.csv("pml-training.csv", na.strings = c("", "NA", "#DIV/0!"))
+test_data <- read.csv("pml-testing.csv", na.strings = c("", "NA", "#DIV/0!"))
+```
+
+```{r}
+# 2. Data Cleaning
+# Remove columns with mostly NA values or irrelevant columns
+train_data <- train_data[, colSums(is.na(train_data)) == 0]
+test_data <- test_data[, colSums(is.na(test_data)) == 0]
+
+# Remove metadata columns
+metadata_cols <- grepl("^(X|user_name|timestamp|window)", names(train_data))
+train_data <- train_data[, !metadata_cols]
+test_data <- test_data[, !metadata_cols]
+
+# Ensure 'classe' is a factor (for training data)
+train_data$classe <- as.factor(train_data$classe)
+```
+
+```{r}
+# 3. Data Exploration
+# Visualize class distribution
+ggplot(train_data, aes(x = classe)) +
+  geom_bar(fill = "steelblue") +
+  ggtitle("Class Distribution in Training Data") +
+  xlab("Class") +
+  ylab("Count")
+```
+```{r}
+# 4. Split Data into Training and Validation Sets
+set.seed(123)
+train_index <- createDataPartition(train_data$classe, p = 0.7, list = FALSE)
+training <- train_data[train_index, ]
+validation <- train_data[-train_index, ]
+```
+
+```{r}
+# 5. Build the Model
+# Train GBM model with 5-fold cross-validation
+set.seed(123)
+model <- train(
+  classe ~ .,
+  data = training,
+  method = "gbm",
+  trControl = trainControl(method = "cv", number = 5),
+  verbose = FALSE
+)
+
+# Display model summary
+print(model)
+```
+
+```{r}
+# 6. Validate the Model
+predictions <- predict(model, validation)
+conf_matrix <- confusionMatrix(predictions, validation$classe)
+print(conf_matrix)
+```
+
+```{r}
+# 7. Feature Importance
+# Plot variable importance
+importance <- varImp(model, scale = TRUE)
+print(importance)
+plot(importance, top = 20, main = "Top 20 Most Important Variables")
+```
+
+```{r}
+# 8. Predict on Test Data
+# Ensure column names match between training and test datasets
+test_predictions <- predict(model, test_data)
+```
+
+```{r}
+# 9. Save Predictions for Submission
+submission <- data.frame(ProblemId = 1:length(test_predictions), Prediction = test_predictions)
+write.csv(submission, "predictions.csv", row.names = FALSE)
+```
